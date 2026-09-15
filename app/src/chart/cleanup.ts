@@ -11,7 +11,7 @@ async function chartFile(root: string, relative: string, post: Post): Promise<st
   const parts = relative.split('/');
   if (parts.length !== 4 || parts[0] !== post.symbol || !/^[A-Z0-9]+$/.test(parts[0]!)
     || !/^\d{4}-\d{2}-\d{2}$/.test(parts[1]!) || parts[2] !== post.snapshot_id
-    || !/^\d+$/.test(parts[2]!) || !/^(1h|4h)\.png$/.test(parts[3]!)) throw new Error('INVALID_CHART_PATH');
+    || !/^\d+$/.test(parts[2]!) || !/^(1h|4h|dashboard)\.png$/.test(parts[3]!)) throw new Error('INVALID_CHART_PATH');
   const file = path.resolve(root, ...parts);
   const relativeToRoot = path.relative(root, file);
   if (!relativeToRoot || relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) throw new Error('INVALID_CHART_PATH');

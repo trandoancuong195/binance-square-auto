@@ -65,7 +65,7 @@ async function loadPosts(append = false) {
         const blob = await (await request(`/posts/${post.id}/charts/${i}`)).blob();
         if (!card.isConnected) break;
         const url = URL.createObjectURL(blob); urls.push(url);
-        const img = element('img'); img.src = url; img.alt = `Biểu đồ ${post.symbol} ${i === 0 ? '1h' : '4h'}`; charts.append(img);
+        const img = element('img'); img.src = url; img.alt = `Biểu đồ ${post.symbol} ${['1h', '4h', 'Volume / OI / Long-short'][i] || 'dữ liệu'}`; charts.append(img);
       } catch { charts.append(element('p', 'hint', 'Chưa tải được chart.')); }
     }
   }

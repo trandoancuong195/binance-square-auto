@@ -34,7 +34,7 @@ Nối một HTTP Request vào nhánh thành công của node đăng: method `DEL
 
 Chỉ gọi sau khi script xác nhận upload/đăng thành công, không nối nhánh lỗi `continueErrorOutput`. Nếu script thoát mã 0 nhưng trả lỗi nghiệp vụ trong stdout, thêm IF kiểm tra kết quả thực của script trước khi xóa. Nếu API xóa lỗi, retry riêng node xóa, không chạy lại node đăng.
 
-Response có `postId`, `deleted`, `alreadyMissing`, `chart_paths:[]`, `alreadyCleaned`. Gọi lại an toàn khi file đã xóa. API lấy đường dẫn từ DB, chỉ xóa PNG 1h/4h đúng symbol/snapshot bên trong OUTPUT_DIR, không xóa thư mục và từ chối symlink ở đường dẫn chart. Sau khi xóa, trang review không còn ảnh và `/posts/trending` không trả bài đó vì chart_paths rỗng. File mount ở `/data/charts` cũng biến mất nếu đó là bind mount của cùng OUTPUT_DIR; file sao chép riêng không bị xóa.
+Response có `postId`, `deleted`, `alreadyMissing`, `chart_paths:[]`, `alreadyCleaned`. Gọi lại an toàn khi file đã xóa. API lấy đường dẫn từ DB, chỉ xóa PNG 1h/4h/dashboard đúng symbol/snapshot bên trong OUTPUT_DIR, không xóa thư mục và từ chối symlink ở đường dẫn chart. Sau khi xóa, trang review không còn ảnh và `/posts/trending` không trả bài đó vì chart_paths rỗng. File mount ở `/data/charts` cũng biến mất nếu đó là bind mount của cùng OUTPUT_DIR; file sao chép riêng không bị xóa.
 
 API không xác minh trạng thái trên Binance, không đổi status/PUBLISHED và không cập nhật series. Việc gọi API sau đăng thành công do n8n điều phối. Không có migration DB; cần deploy `app/src/chart/cleanup.ts` cùng routes và build/restart ứng dụng.
 

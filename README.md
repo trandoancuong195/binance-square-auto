@@ -1,6 +1,6 @@
 # Crypto Square Agent
 
-MVP tạo bản nháp Binance Square tiếng Việt từ dữ liệu Binance, có phân tích kỹ thuật, lịch sử nhận định, series và chart 1h/4h. Backend dùng Node.js/TypeScript, PostgreSQL và Puppeteer. n8n gọi pipeline theo lịch.
+MVP tạo bản nháp Binance Square tiếng Việt từ dữ liệu Binance, có phân tích kỹ thuật, lịch sử nhận định, series và chart 1h/4h cùng dashboard volume/OI/long-short. Backend dùng Node.js/TypeScript, PostgreSQL và Puppeteer. n8n gọi pipeline theo lịch.
 
 **Trạng thái thay đổi gần nhất:** đã cập nhật source để viết bài cho toàn bộ token trending do scanner trả về, bỏ bước AI quyết định viết/bỏ qua. Thay đổi này chưa được build, test hoặc chạy tích hợp ở máy local theo yêu cầu chỉ viết code; cần upload và kiểm tra trên VPS.
 
@@ -10,11 +10,11 @@ MVP tạo bản nháp Binance Square tiếng Việt từ dữ liệu Binance, c�
 
 - Scanner lọc thị trường spot USDT đang giao dịch; loại stablecoin/leveraged token theo danh sách trong `config/constants.ts`, thanh khoản thấp và lịch sử nến không đủ. Danh sách loại cần cập nhật khi có tài sản mới.
 - Phân tích 15m/1h/4h bằng nến đã đóng: EMA20/50/200, RSI14, MACD12/26/9, ATR14, volume ratio, swing support/resistance và breakout.
-- Futures cùng symbol: funding, OI hiện tại, thay đổi OI qua hai mẫu 1h, tỷ lệ tài khoản long/short. Token không có hợp đồng tương ứng được ghi thiếu dữ liệu; không tự chuyển sang hợp đồng `1000...`.
+- Futures cùng symbol: funding, OI hiện tại, thay đổi OI qua hai mẫu 1h cuối, lịch sử tối đa 48 mẫu 1h cho OI và tỷ lệ tài khoản long/short. Token không có hợp đồng tương ứng được ghi thiếu dữ liệu; không tự chuyển sang hợp đồng `1000...`.
 - Lưu snapshot với toàn bộ OHLCV và kết quả tính toán. AI chỉ nhận bản tóm tắt không có mảng nến.
 - Mọi token trending do scanner trả về đều được đưa vào luồng viết bài. Code xác định loại bài `NEW_POST`, `CONTINUE_SERIES` hoặc `UPDATE_SERIES`; không gọi AI decision và không trả `SKIP` trong luồng generate.
-- AI viết văn xuôi; code chèn số liệu. Kiểm tra JSON, độ dài 1.200–3.500 ký tự (mục tiêu bài ngắn gọn khoảng 1.350), mức giá có nguồn, chuyển stage, lặp nội dung và một số tuyên bố lợi nhuận. Giới hạn dùng chung trong `app/src/ai/limits.ts`; `series.nextWatch` có 1–3 mục. Khi đầu ra không đạt schema, lần thử sau nhận JSON trước đó và lỗi cụ thể để sửa.
-- Chart PNG được dựng từ dữ liệu bằng Lightweight Charts, không chụp Binance.
+- AI viết theo bốn góc kể chuyện và ba bố cục; code thay placeholder bằng số liệu snapshot ngay trong câu, thay cho bảng số liệu dài. Kiểm tra JSON, độ dài 1.200–3.500 ký tự (mục tiêu bài ngắn gọn khoảng 1.350), mức giá có nguồn, chuyển stage, lặp nội dung và một số tuyên bố lợi nhuận. Giới hạn dùng chung trong `app/src/ai/limits.ts`; `series.nextWatch` có 1–3 mục. Khi đầu ra không đạt schema, lần thử sau nhận JSON trước đó và lỗi cụ thể để sửa.
+- Chart kỹ thuật 1h/4h có bốn bảng màu theo góc bài. Dashboard PNG bổ sung giá/volume spot, OI và tỷ lệ tài khoản long/short theo giờ; dùng dữ liệu thật, phần thiếu được ghi rõ. Xem [luồng viết và chart](app/src/ai/README.md).
 - Trang `/review` xem chart/nội dung, duyệt hoặc loại draft. Khóa API không lưu trong localStorage.
 - Pipeline chạy nền, có mã lượt chạy, idempotency key, khóa chống chạy trùng và kết quả từng token trong PostgreSQL.
 - **Không tự đăng.** Endpoint publish trả `501 PUBLISH_DISABLED`; không lưu hoặc sử dụng Binance Square key trong MVP.
@@ -90,7 +90,7 @@ n8n / trang duyệt
   → đọc bài gần đây + active series + thesis
   → code xác định bài mới / tiếp nối / cập nhật series
   → AI writer + kiểm tra nội dung
-  → PNG 1h/4h
+  → PNG 1h/4h + dashboard volume/OI/long-short
   → lưu DRAFT
   → người dùng duyệt
   → APPROVED + cập nhật series/memory
@@ -158,7 +158,7 @@ Các endpoint dữ liệu yêu cầu header `X-API-Key`. `/health` và tài nguy
 | POST | `/post/generate/:symbol` | Toàn bộ luồng tạo draft |
 | GET | `/posts?status=DRAFT&limit=20` | Danh sách bài; phân trang `before` |
 | GET | `/posts/:id` | Chi tiết bài |
-| GET | `/posts/:id/charts/0` | PNG 1h; index 1 là 4h |
+| GET | `/posts/:id/charts/0` | PNG 1h; index 1 là 4h, index 2 là dashboard |
 | DELETE | `/posts/:id/charts` | Xóa file chart của bài và xóa chart_paths; gọi sau khi dịch vụ ngoài đăng thành công |
 | POST | `/posts/:id/approve` | Duyệt và cập nhật series/memory |
 | POST | `/posts/:id/reject` | Loại draft |

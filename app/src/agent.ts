@@ -7,6 +7,7 @@ import { planPost } from './series/decision-engine.js';
 import { fixedFacts, writeDraft } from './ai/writer.js';
 import type { DraftOutput } from './ai/types.js';
 import { qualityGate } from './ai/quality.js';
+import { presentation } from './ai/presentation.js';
 import { renderCharts } from './chart/render.js';
 import type { Post } from './types.js';
 
@@ -32,6 +33,7 @@ export async function generatePost(symbol: string, snapshotId?: string): Promise
     stage = 'load_context';
     const context = await buildContext(snapshot.analysis);
     const decision = planPost(context);
+    const editorialStyle = presentation(context).style;
     let output: DraftOutput | null = null;
     let quality: ReturnType<typeof qualityGate> | null = null;
     let title = `${symbol} — Bản nháp dữ liệu`;
@@ -54,7 +56,7 @@ export async function generatePost(symbol: string, snapshotId?: string): Promise
       console.log(JSON.stringify({ event: 'ai_writer_bypassed', symbol, snapshot_id: snapshot.id }));
     }
     stage = 'render_chart';
-    const chartPaths = await renderCharts(snapshot);
+    const chartPaths = await renderCharts(snapshot, editorialStyle);
     if (quality) { quality.components.chartQuality = 5; quality.score += 5; }
     const seriesVersion = context.activeSeries.find(s => s.id === decision.seriesId)?.version ?? null;
     const frame = snapshot.analysis.frames['1h'];
@@ -62,7 +64,7 @@ export async function generatePost(symbol: string, snapshotId?: string): Promise
     stage = 'save_draft';
     const post = await transaction(async client => {
       const result = await client.query<Post>(`INSERT INTO posts(symbol,series_id,snapshot_id,post_type,title,content,market_price,trend_score,chart_paths,metadata)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [symbol, decision.seriesId, snapshot!.id, decision.decision, title, content, snapshot!.analysis.price, snapshot!.analysis.trendScore, JSON.stringify(chartPaths), JSON.stringify({ decision, output, quality, seriesVersion, marketState, writerMode, aiModel, scanAsOf: snapshot!.analysis.asOf })]);
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [symbol, decision.seriesId, snapshot!.id, decision.decision, title, content, snapshot!.analysis.price, snapshot!.analysis.trendScore, JSON.stringify(chartPaths), JSON.stringify({ editorialStyle, decision, output, quality, seriesVersion, marketState, writerMode, aiModel, scanAsOf: snapshot!.analysis.asOf })]);
       return result.rows[0]!;
     });
     console.log(JSON.stringify({ event: 'draft_created', symbol, post_id: post.id, series_id: post.series_id, decision: decision.decision, trend_score: snapshot.analysis.trendScore, writer_mode: writerMode, ai_model: aiModel }));

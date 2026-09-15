@@ -85,7 +85,7 @@ api.delete('/posts/:id/charts', wrap(async (req, res) => {
   res.json(await deletePostCharts(id(req)));
 }));
 api.get('/posts/:id/charts/:index', wrap(async (req, res) => {
-  const index = z.coerce.number().int().min(0).max(1).parse(req.params.index);
+  const index = z.coerce.number().int().min(0).max(2).parse(req.params.index);
   const post = (await pool.query<Post>('SELECT * FROM posts WHERE id=$1', [id(req)])).rows[0];
   const relative = post?.chart_paths[index];
   if (!relative) throw new Error('CHART_NOT_FOUND');

@@ -86,16 +86,21 @@ export async function derivatives(symbol: string): Promise<Derivatives> {
     result.openInterest = row.openInterest;
   } catch { result.unavailable.push('openInterest'); }
   try {
-    const rows = z.array(z.object({ sumOpenInterest: numeric, timestamp: numeric })).min(2).parse(await request(env.BINANCE_FUTURES_URL, '/futures/data/openInterestHist', { symbol, period: '1h', limit: 2 }));
-    const [previous, current] = rows;
+    const rows = z.array(z.object({ sumOpenInterest: numeric, timestamp: numeric })).min(2).parse(await request(env.BINANCE_FUTURES_URL, '/futures/data/openInterestHist', { symbol, period: '1h', limit: 48 }));
+    rows.sort((a, b) => a.timestamp - b.timestamp);
+    const previous = rows.at(-2), current = rows.at(-1);
+    if (rows.some((row, index) => row.sumOpenInterest < 0 || row.timestamp > Date.now() + 60000 || (index > 0 && row.timestamp - rows[index - 1]!.timestamp !== 3600000))) throw new Error('INVALID_OI_HISTORY');
     if (!previous || !current || previous.sumOpenInterest <= 0 || current.timestamp - previous.timestamp !== 3600000 || Date.now() - current.timestamp > 7200000) throw new Error('INVALID_OI_HISTORY');
     result.oiChange1h = (current.sumOpenInterest / previous.sumOpenInterest - 1) * 100;
+    result.oiHistory = rows.map(row => ({ time: row.timestamp / 1000, value: row.sumOpenInterest }));
   } catch { result.unavailable.push('oiChange1h'); }
   try {
-    const rows = z.array(z.object({ longShortRatio: numeric, timestamp: numeric })).min(1).parse(await request(env.BINANCE_FUTURES_URL, '/futures/data/globalLongShortAccountRatio', { symbol, period: '1h', limit: 1 }));
-    const row = rows[0]!;
-    if (Date.now() - row.timestamp > 7200000) throw new Error('STALE_LONG_SHORT');
+    const rows = z.array(z.object({ longShortRatio: numeric, longAccount: numeric, shortAccount: numeric, timestamp: numeric })).min(1).parse(await request(env.BINANCE_FUTURES_URL, '/futures/data/globalLongShortAccountRatio', { symbol, period: '1h', limit: 48 }));
+    rows.sort((a, b) => a.timestamp - b.timestamp);
+    const row = rows.at(-1)!;
+    if (Date.now() - row.timestamp > 7200000 || rows.some((r, i) => r.timestamp > Date.now() + 60000 || r.longShortRatio <= 0 || r.longAccount < 0 || r.longAccount > 1 || r.shortAccount <= 0 || r.shortAccount > 1 || Math.abs(r.longAccount + r.shortAccount - 1) > 0.01 || (i > 0 && r.timestamp - rows[i - 1]!.timestamp !== 3600000))) throw new Error('INVALID_LONG_SHORT');
     result.longShortRatio = row.longShortRatio;
+    result.longShortHistory = rows.map(r => ({ time: r.timestamp / 1000, ratio: r.longShortRatio, long: r.longAccount * 100, short: r.shortAccount * 100 }));
   } catch { result.unavailable.push('longShortRatio'); }
   return result;
 }

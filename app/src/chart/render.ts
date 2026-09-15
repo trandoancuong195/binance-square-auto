@@ -6,6 +6,8 @@ import { appRoot, env, outputRoot } from '../config/env.js';
 import { SYMBOL_PATTERN } from '../config/constants.js';
 import { ema } from '../indicators/index.js';
 import type { Snapshot } from '../types.js';
+import { presentation, type EditorialStyle } from '../ai/presentation.js';
+import { chartThemes, dashboardHtml } from './dashboard.js';
 
 async function loadChartBundle(): Promise<string> {
   const filename = 'lightweight-charts.standalone.production.js';
@@ -49,7 +51,8 @@ function chartFailure(error: unknown) {
   return { code: 'CHART_RENDER_FAILED', hint: 'Chart rendering failed at the reported stage.' };
 }
 
-export async function renderCharts(snapshot: Snapshot): Promise<string[]> {
+export async function renderCharts(snapshot: Snapshot, style: EditorialStyle = presentation({ market: snapshot.analysis, recentPosts: [], activeSeries: [], previousThesis: null }).style): Promise<string[]> {
+  const theme = chartThemes[style];
   let stage = 'load_chart_library';
   let timeframe: string | null = null;
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
@@ -74,25 +77,25 @@ export async function renderCharts(snapshot: Snapshot): Promise<string[]> {
       stage = 'render_template';
       scriptFailed = false;
       const frame = snapshot.analysis.frames[tf];
-      await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;background:#101722;color:#e8eef7;font-family:Arial,sans-serif}header{height:90px;padding:18px 28px}h1{font-size:24px;margin:0 0 8px}p{margin:0;color:#aab8cb}#chart{height:650px}footer{height:60px;padding:14px 28px;color:#93a5ba;font-size:14px}</style></head><body><header><h1 id="title"></h1><p id="subtitle"></p></header><div id="chart"></div><footer>Closed candles · EMA 20 / 50 / 200 · Binance market data · Charts by TradingView Lightweight Charts</footer></body></html>`);
+      await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;background:${theme.bg};color:${theme.text};font-family:Arial,sans-serif}header{height:90px;padding:18px 28px}h1{font-size:24px;margin:0 0 8px}p{margin:0;color:${theme.muted}}#chart{height:650px}footer{height:60px;padding:14px 28px;color:${theme.muted};font-size:14px}</style></head><body><header><h1 id="title"></h1><p id="subtitle"></p></header><div id="chart"></div><footer>Closed candles · EMA 20 / 50 / 200 · Binance market data · Charts by TradingView Lightweight Charts</footer></body></html>`);
       await page.addScriptTag({ content: bundle });
       const closes = frame.candles.map(c => c.close);
       const series = [20, 50, 200].map(period => ({ period, data: ema(closes, period).flatMap((value, i) => value === null ? [] : [{ time: frame.candles[i]!.time, value }]).slice(-120) }));
-      const payload = JSON.stringify({ symbol: snapshot.analysis.symbol, asOf: snapshot.analysis.asOf, price: snapshot.analysis.price, change: snapshot.analysis.change24h, score: snapshot.analysis.trendScore, tf, candles: frame.candles.slice(-120), series, levels: frame.levels }).replace(/</g, '\u003c');
+      const payload = JSON.stringify({ symbol: snapshot.analysis.symbol, asOf: snapshot.analysis.asOf, price: snapshot.analysis.price, change: snapshot.analysis.change24h, score: snapshot.analysis.trendScore, theme, tf, candles: frame.candles.slice(-120), series, levels: frame.levels }).replace(/</g, '\u003c');
       await page.addScriptTag({ content: `(() => {
         const data = ${payload};
         document.querySelector('#title').textContent = data.symbol + ' · ' + data.tf.toUpperCase() + ' · ' + data.price + ' USDT';
         document.querySelector('#subtitle').textContent = '24h: ' + data.change.toFixed(2) + '% | Trend Score: ' + data.score + ' | ' + data.asOf;
-        const chart = LightweightCharts.createChart(document.querySelector('#chart'), {width:1200,height:650,layout:{background:{color:'#101722'},textColor:'#aab8cb'},grid:{vertLines:{color:'#1c2838'},horzLines:{color:'#1c2838'}},timeScale:{timeVisible:true},rightPriceScale:{scaleMargins:{top:0.08,bottom:0.26}},handleScroll:false,handleScale:false});
-        const candle = chart.addCandlestickSeries({upColor:'#26c6a0',downColor:'#ef6372',borderVisible:false,wickUpColor:'#26c6a0',wickDownColor:'#ef6372',priceFormat:{type:'price',precision:Math.min(12,Math.max(2,4-Math.floor(Math.log10(data.price)))),minMove:Math.pow(10,-Math.min(12,Math.max(2,4-Math.floor(Math.log10(data.price)))))}});
+        const chart = LightweightCharts.createChart(document.querySelector('#chart'), {width:1200,height:650,layout:{background:{color:data.theme.bg},textColor:data.theme.muted},grid:{vertLines:{color:data.theme.grid},horzLines:{color:data.theme.grid}},timeScale:{timeVisible:true},rightPriceScale:{scaleMargins:{top:0.08,bottom:0.26}},handleScroll:false,handleScale:false});
+        const candle = chart.addCandlestickSeries({upColor:data.theme.up,downColor:data.theme.down,borderVisible:false,wickUpColor:data.theme.up,wickDownColor:data.theme.down,priceFormat:{type:'price',precision:Math.min(12,Math.max(2,4-Math.floor(Math.log10(data.price)))),minMove:Math.pow(10,-Math.min(12,Math.max(2,4-Math.floor(Math.log10(data.price)))))}});
         candle.setData(data.candles.map(c=>({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close})));
         const volume=chart.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:'volume'});
         volume.priceScale().applyOptions({scaleMargins:{top:0.8,bottom:0}});
-        volume.setData(data.candles.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?'#26c6a055':'#ef637255'})));
-        const colors=['#f3bd4f','#60a5fa','#b794f6'];
+        volume.setData(data.candles.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?data.theme.up+'88':data.theme.down+'88'})));
+        const colors=[data.theme.accent,data.theme.up,data.theme.down];
         data.series.forEach((s,i)=>chart.addLineSeries({color:colors[i],lineWidth:2,priceLineVisible:false,lastValueVisible:false,title:'EMA'+s.period}).setData(s.data));
-        data.levels.support.forEach(price=>candle.createPriceLine({price,color:'#26c6a0',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'S'}));
-        data.levels.resistance.forEach(price=>candle.createPriceLine({price,color:'#ef6372',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'R'}));
+        data.levels.support.forEach(price=>candle.createPriceLine({price,color:data.theme.up,lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'S'}));
+        data.levels.resistance.forEach(price=>candle.createPriceLine({price,color:data.theme.down,lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'R'}));
         chart.timeScale().fitContent();
         window.chartReady = true;
       })();` });
@@ -105,6 +108,16 @@ export async function renderCharts(snapshot: Snapshot): Promise<string[]> {
       await writeFile(path.join(outputRoot, relativePath), await page.screenshot({ type: 'png' }));
       outputs.push(relativePath.split(path.sep).join('/'));
     }
+    timeframe = 'dashboard';
+    stage = 'render_dashboard';
+    scriptFailed = false;
+    await page.setViewport({ width: 1200, height: 900, deviceScaleFactor: 1 });
+    await page.setContent(dashboardHtml(snapshot, style));
+    await page.evaluate(() => document.fonts.ready);
+    const dashboardPath = path.join(directory, 'dashboard.png');
+    stage = 'save_png';
+    await writeFile(path.join(outputRoot, dashboardPath), await page.screenshot({ type: 'png' }));
+    outputs.push(dashboardPath.split(path.sep).join('/'));
     return outputs;
   } catch (error) {
     const failure = scriptFailed || (error instanceof Error && error.message === 'CHART_SCRIPT_FAILED')

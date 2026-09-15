@@ -9,7 +9,11 @@ export interface FrameAnalysis {
   levels: { support: number[]; resistance: number[] };
   breakout: boolean; supportBroken: boolean;
 }
-export interface Derivatives { funding: number | null; openInterest: number | null; oiChange1h: number | null; longShortRatio: number | null; unavailable: string[] }
+export interface Derivatives {
+  funding: number | null; openInterest: number | null; oiChange1h: number | null; longShortRatio: number | null; unavailable: string[];
+  oiHistory?: { time: number; value: number }[];
+  longShortHistory?: { time: number; ratio: number; long: number; short: number }[];
+}
 export interface Analysis {
   symbol: string; asOf: string; price: number; change24h: number; quoteVolume: number;
   frames: Record<Timeframe, FrameAnalysis>; derivatives: Derivatives;

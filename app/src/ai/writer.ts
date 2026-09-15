@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { complete } from './client.js';
+import { presentation, inlineFacts, fillFacts } from './presentation.js';
 import { draftSchema, type Decision, type DraftOutput } from './types.js';
 import { writerPrompt, type WriterPromptType } from './prompts.js';
 import { POST_MIN_CHARACTERS, POST_TARGET_CHARACTERS, POST_MAX_CHARACTERS } from './limits.js';
@@ -18,8 +19,15 @@ export function fixedFacts(context: AgentContext): string {
     `Funding: ${d.funding === null ? 'thiếu dữ liệu' : (d.funding * 100).toFixed(4) + '%'} | OI 1h: ${d.oiChange1h === null ? 'thiếu dữ liệu' : d.oiChange1h.toFixed(2) + '%'}`,
   ].join('\n');
 }
-function assemblePost(p: DraftOutput['post'], facts: string): string {
-  return [p.title, p.hook, facts, `Nhận định: ${p.interpretation}`, `Kịch bản tăng: ${p.bullishScenario}`, `Kịch bản giảm: ${p.bearishScenario}`, `Rủi ro: ${p.risk}`, p.tags.join(' ')].join('\n\n');
+function assemblePost(p: DraftOutput['post'], facts: string, layout = 0): string {
+  const scenarios = layout === 1 ? [p.bearishScenario, p.bullishScenario] : [p.bullishScenario, p.bearishScenario];
+  const body = layout === 2 ? [p.hook, p.interpretation, p.risk, ...scenarios] : [p.hook, p.interpretation, ...scenarios, p.risk];
+  return [p.title, ...body, facts, p.tags.join(' ')].join('\n\n');
+}
+function resolveOutput(output: DraftOutput, facts: Record<string, string>): DraftOutput {
+  const post = { ...output.post };
+  for (const key of ['title', 'hook', 'interpretation', 'bullishScenario', 'bearishScenario', 'risk'] as const) post[key] = fillFacts(post[key], facts);
+  return { post, series: { ...output.series, title: fillFacts(output.series.title, facts), newThesis: fillFacts(output.series.newThesis, facts), nextWatch: output.series.nextWatch.map(text => fillFacts(text, facts)) } };
 }
 export function assemble(output: DraftOutput, facts: string): string {
   return assemblePost(output.post, facts);
@@ -32,7 +40,10 @@ const transitions: Record<string, string[]> = {
   CONTINUATION: ['CONTINUATION', 'RETEST', 'INVALIDATED', 'CLOSED'],
 };
 export async function writeDraft(context: AgentContext, decision: Decision) {
-  const facts = fixedFacts(context);
+  const display = presentation(context);
+  const values = inlineFacts(context);
+  const facts = `${context.market.symbol} · ${context.market.asOf.slice(0, 16).replace('T', ' ')} UTC · Binance`;
+  const render = (output: DraftOutput) => assemblePost(resolveOutput(output, values).post, facts, display.layout);
   // Count fixed facts, labels and separators with the same assembler used to save the post.
   const fixedCharacters = Array.from(assemblePost({ title: '', hook: '', interpretation: '', bullishScenario: '', bearishScenario: '', risk: '', tags: [] }, facts)).length;
   const postTextBudget = {
@@ -44,7 +55,19 @@ export async function writeDraft(context: AgentContext, decision: Decision) {
   const forcedInvalidation = previous ? invalidated(previous, context.market.frames['1h'].price) : false;
   const allowedLevels = [...Object.values(context.market.frames).flatMap(f => [...f.levels.support, ...f.levels.resistance]), ...[previous?.bull_trigger, previous?.bear_trigger, previous?.invalidation_price].filter((v): v is number => typeof v === 'number')];
   const schema = draftSchema.superRefine((output, ctx) => {
-    const content = assemble(output, facts), length = Array.from(content).length;
+    const content = render(output), length = Array.from(content).length;
+    const textFields: [string[], string][] = [
+      ...Object.entries(output.post).filter((entry): entry is [string, string] => typeof entry[1] === 'string').map(([key, value]): [string[], string] => [['post', key], value]),
+      [['series', 'title'], output.series.title], [['series', 'newThesis'], output.series.newThesis],
+      ...output.series.nextWatch.map((text, i): [string[], string] => [['series', 'nextWatch', String(i)], text]),
+    ];
+    for (const [field, text] of textFields) {
+      const resolved = fillFacts(text, values);
+      if (/[{}]/.test(resolved)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: field, message: 'Unknown placeholder. Use only {{name}} from inlineFacts.' });
+      if (/\d/.test(text.replace(/\{\{[a-z_]+\}\}/g, ''))) ctx.addIssue({ code: z.ZodIssueCode.custom, path: field, message: 'Use inlineFacts placeholders for numbers and asset names; write timeframe/indicator names in words.' });
+    }
+    const resolvedSchema = draftSchema.safeParse(resolveOutput(output, values));
+    if (!resolvedSchema.success) for (const issue of resolvedSchema.error.issues) ctx.addIssue(issue);
     const error = (path: string[], message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
     if (length < POST_MIN_CHARACTERS || length > POST_MAX_CHARACTERS) {
       const correction = length > POST_TARGET_CHARACTERS ? `Shorten post text by about ${length - POST_TARGET_CHARACTERS} characters` : `Expand post text by about ${POST_TARGET_CHARACTERS - length} characters`;
@@ -81,7 +104,12 @@ export async function writeDraft(context: AgentContext, decision: Decision) {
         volumeRatio: frame.volume.ratio, levels: frame.levels,
         breakout: frame.breakout, supportBroken: frame.supportBroken,
       }])),
-      derivatives: market.derivatives, warnings: market.warnings,
+      derivatives: {
+        funding: market.derivatives.funding, openInterest: market.derivatives.openInterest,
+        oiChange1h: market.derivatives.oiChange1h, longShortRatio: market.derivatives.longShortRatio,
+        oiRecent: market.derivatives.oiHistory?.slice(-4), longShortRecent: market.derivatives.longShortHistory?.slice(-4),
+        unavailable: market.derivatives.unavailable,
+      }, warnings: market.warnings,
     },
     previousSeries: previous ? {
       title: previous.title, stage: previous.stage, bias: previous.bias, thesis: previous.thesis,
@@ -98,8 +126,8 @@ export async function writeDraft(context: AgentContext, decision: Decision) {
         };
       }),
     allowedStages: forcedInvalidation ? ['INVALIDATED'] : previous ? transitions[previous.stage] ?? [] : ['WATCHING', 'BREAKOUT_ATTEMPT', 'BREAKOUT_CONFIRMED'],
-    allowedLevels: [...new Set(allowedLevels)], postTextBudget,
+    allowedLevels: [...new Set(allowedLevels)], postTextBudget, inlineFacts: values, editorialStyle: display.style,
   };
-  const output = await complete(schema, writerPrompt(promptType), input, promptType);
-  return { output, content: assemble(output, facts) };
+  const output = await complete(schema, writerPrompt(promptType, display.style), input, `${promptType}:${display.style}`);
+  return { output: resolveOutput(output, values), content: render(output), editorialStyle: display.style };
 }

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Crypto Square · Duyệt bài</title>
+  <link rel="stylesheet" href="/review.css">
+  <script src="/review.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">CRYPTO SQUARE AGENT</p><h1>Bàn biên tập</h1><p>Xem phân tích, duyệt bản nháp và theo dõi chuỗi bài.</p></div><span class="badge">Chế độ bản nháp</span></header>
+    <section class="panel">
+      <form id="connect-form"><label for="api-key">Khóa truy cập</label><div class="row"><input id="api-key" type="password" required autocomplete="off" placeholder="Nhập khóa truy cập nội bộ"><button type="submit">Kết nối</button></div><p class="hint">Khóa chỉ được giữ trong trang hiện tại.</p></form>
+    </section>
+    <section id="workspace" hidden>
+      <div class="toolbar"><label for="status">Trạng thái</label><select id="status"><option value="DRAFT">Bản nháp</option><option value="APPROVED">Đã duyệt</option><option value="FAILED">Đã loại / lỗi</option><option value="">Tất cả</option></select><button id="refresh" class="secondary">Làm mới</button><button id="scan">Quét và tạo bài</button></div>
+      <p class="hint">Duyệt bài sẽ cập nhật nhận định đang theo dõi. Bài chưa được đăng lên Binance Square.</p>
+      <form id="generate-form" class="row"><label for="symbol">Token</label><input id="symbol" placeholder="BTCUSDT" pattern="[A-Za-z0-9]{1,20}[Uu][Ss][Dd][Tt]" required maxlength="24"><button type="submit" class="secondary">Tạo bản nháp</button></form>
+      <section id="run-panel" class="panel" hidden><h2>Tiến trình</h2><pre id="run-result"></pre></section>
+      <section id="posts" aria-label="Danh sách bài viết"></section>
+      <button id="more" class="secondary" hidden>Xem thêm</button>
+    </section>
+    <p id="message" role="status" aria-live="polite"></p>
+    <footer>Dữ liệu Binance · Chart dựng bằng <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts</a></footer>
+  </main>
+</body>
+</html>

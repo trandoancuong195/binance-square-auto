@@ -1,0 +1,263 @@
+{
+  "name": "Crypto Square - Trending posts for publishing",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bangkok"
+  },
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "Every 45 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 45
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "prepare",
+      "name": "Prepare request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { requestKey: 'n8n-trending-' + $execution.id, startedAt: Date.now() } }];"
+      }
+    },
+    {
+      "id": "fetch",
+      "name": "Fetch trending posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3100/posts/trending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ requestKey: $('Prepare request').first().json.requestKey }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "done",
+      "name": "Done",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check",
+              "leftValue": "={{ $json.done === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "posts",
+      "name": "Posts for publishing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "return ($input.first().json.posts ?? []).map(post => ({ json: post }));"
+      }
+    },
+    {
+      "id": "deadline",
+      "name": "Within deadline",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        150
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check",
+              "leftValue": "={{ Date.now() - $('Prepare request').first().json.startedAt < 2700000 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "wait",
+      "name": "Wait 30 seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        100
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "webhookId": "crypto-square-trending-poll"
+    },
+    {
+      "id": "timeout",
+      "name": "Polling timed out",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        300
+      ],
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "={{ 'Trending polling timed out. Reuse requestKey=' + $('Prepare request').first().json.requestKey + ' to retrieve the run; do not start another run blindly.' }}"
+      }
+    }
+  ],
+  "connections": {
+    "Every 45 minutes": {
+      "main": [
+        [
+          {
+            "node": "Prepare request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare request": {
+      "main": [
+        [
+          {
+            "node": "Fetch trending posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch trending posts": {
+      "main": [
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done": {
+      "main": [
+        [
+          {
+            "node": "Posts for publishing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Within deadline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Within deadline": {
+      "main": [
+        [
+          {
+            "node": "Wait 30 seconds",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Polling timed out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30 seconds": {
+      "main": [
+        [
+          {
+            "node": "Fetch trending posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}

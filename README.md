@@ -1,0 +1,1 @@
+# binance-square-auto

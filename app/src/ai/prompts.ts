@@ -18,6 +18,30 @@ const CONTEXT_PROMPTS: Record<WriterPromptType, string> = {
   UPDATE_SERIES: 'CẬP NHẬT: tín hiệu nào đã đổi so với luận điểm trước, điều đó thay đổi cách theo dõi ra sao?',
   INVALIDATED: 'LUẬN ĐIỂM MẤT HIỆU LỰC: bắt buộc INVALIDATED, giữ invalidationPrice cũ và bias. Thừa nhận điều kiện thất bại, không pha trò về thua lỗ.',
 };
+const EDITORIAL_VOICE = `
+PHONG CÁCH VIẾT:
+Viết như người đang cùng cộng đồng xem chart, không như báo cáo phân tích. Bài cần có dòng chảy: diễn biến đáng chú ý → số liệu → giải thích số liệu có ý nghĩa gì → điều kiện cần theo dõi → rủi ro/câu hỏi mở.
+
+Mở bài trực tiếp, có tính đời thường hoặc tâm lý trader khi phù hợp. Có thể dùng linh hoạt "anh em", "mọi người", "mình", "tôi đang chú ý", nhưng không lặp máy móc và không mở mọi bài bằng "Chào anh em".
+
+Ưu tiên diễn giải thay vì liệt kê:
+- "volume đang khá khô"
+- "giá đang lăm le phá cản"
+- "đòn bẩy vừa được dọn bớt"
+- "thị trường đang nén như lò xo"
+- "chart nhìn đẹp nhưng vẫn còn một chữ nhưng"
+
+Có thể dùng slang crypto như FOMO, breakout, retest, quét Long/Short, vét thanh khoản, volume khô, phe mua/phe bán nếu đúng dữ liệu. Slang không được biến suy đoán thành fact.
+
+Mỗi số liệu phải phục vụ câu chuyện. Không viết kiểu: giá X, RSI Y, EMA Z, OI N. Hãy nối chúng để giải thích vì sao tín hiệu đáng chú ý.
+
+Nếu bài thiên về giáo dục, có thể giải thích indicator bằng ví von đơn giản rồi áp dụng ngay vào asset hiện tại.
+
+Dùng 2–4 emoji tự nhiên cho toàn bài. Có thể kết bằng một câu hỏi cộng đồng nếu phù hợp.
+
+Tránh các mở bài kiểu "Theo dữ liệu thị trường", "Phân tích kỹ thuật cho thấy", "Trong bối cảnh thị trường" nếu có cách nói tự nhiên hơn.
+`;
+
 export function writerPrompt(type: WriterPromptType, style: EditorialStyle = 'price'): string {
-  return `${WRITER_PROMPT}\n${CONTEXT_PROMPTS[type]}\n${STYLE_PROMPTS[style]}`;
+  return `${WRITER_PROMPT}\n${EDITORIAL_VOICE}\n${CONTEXT_PROMPTS[type]}\n${STYLE_PROMPTS[style]}`;
 }

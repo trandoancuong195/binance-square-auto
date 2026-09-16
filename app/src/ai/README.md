@@ -31,4 +31,18 @@ AI_WRITER_ENABLED=true mới áp dụng prompt. Chế độ false giữ draft d�
 
 Deploy toàn bộ các file source đã thay đổi và app/public/review.js rồi build/restart PM2 trên VPS. Không cần migration hoặc dependency mới. Snapshot/bài cũ không tự cập nhật; tạo snapshot mới để thấy lịch sử phái sinh và chart mới.
 
-Chưa chạy build, test, gọi AI/Binance thực hoặc kiểm tra ảnh render trong thay đổi này. Cần kiểm tra draft mới, review/approve, ba ảnh và cleanup trên VPS trước khi bật lịch đăng.
+Đã kiểm chứng chart không DB trên Windows ngày 2026-09-15: npm run build thành công; lấy dữ liệu BTCUSDT thật (299 nến mỗi khung, 48 mẫu OI, 48 mẫu long/short); render đủ 12 PNG cho bốn theme và thêm trường hợp thiếu phái sinh. Kiểm tra chữ ký PNG/kích thước, mở ảnh kỹ thuật và dashboard để kiểm tra hiển thị; bổ sung chú giải màu Long/Short rồi build/render lại thành công từ snapshot đã lưu.
+
+Chạy lại từ thư mục app:
+```bash
+npm run build
+node verify-charts.mjs
+```
+Runner dùng phân tích/render trực tiếp, không import DB client, không gọi AI, không đăng bài. File analysis.json, PNG và report.json lưu trong output/verification-<timestamp>. Có thể dùng `node verify-charts.mjs --snapshot <đường-dẫn-analysis.json>` để render lại dữ liệu đã lưu mà không gọi Binance. Bốn theme được ép chọn để kiểm tra khả năng render; không có nghĩa snapshot đủ điều kiện biên tập cho cả bốn phong cách.
+
+Báo cáo lần cuối: output/verification-2026-09-15T10-25-06-733Z/report.json. Chưa kiểm chứng AI viết bài, API trending, lưu/duyệt DB hoặc cleanup DB trong lần chạy này.
+
+## Model dự phòng
+AI_FALLBACK_MODELS cấu hình danh sách model dự phòng theo thứ tự sau AI_MODEL. Giới hạn hai lần sửa output áp dụng cho từng model; khi hết danh sách thì báo lỗi. Xem [model-fallback.md](model-fallback.md) để biết lỗi nào được chuyển model, cấu hình Gemini free tier và kiểm chứng không DB.
+
+Đã chạy build và 14 kiểm tra giả lập fallback thành công ngày 2026-09-16; không gọi provider thật, không dùng DB. metadata.aiModel ghi model thực tế thành công.

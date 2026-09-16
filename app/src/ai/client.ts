@@ -77,9 +77,40 @@ function validationIssues(error: z.ZodError, writer = false) {
   });
 }
 
-export async function complete<T>(schema: z.ZodType<T>, system: string, input: unknown, promptType?: string): Promise<T> {
-  if (!env.AI_BASE_URL || !env.AI_API_KEY || !env.AI_MODEL) throw new Error('AI_NOT_CONFIGURED');
+// Authentication/config errors are not recoverable by switching models.
+function canFallback(error: unknown): boolean {
+  return error instanceof Error && (error.message === 'AI_OUTPUT_INVALID'
+    || /^AI_REQUEST_FAILED_(404|408|429|500|502|503|504)(_|$)/.test(error.message)
+    || /^AI_REQUEST_FAILED_(ECONNABORTED|ETIMEDOUT|ECONNRESET|ERR_NETWORK|NETWORK)(_|$)/.test(error.message));
+}
+
+export async function completeWithModel<T>(schema: z.ZodType<T>, system: string, input: unknown, promptType?: string): Promise<{ data: T; model: string }> {
+  if (!env.AI_BASE_URL || !env.AI_API_KEY || !env.AI_MODEL.trim()) throw new Error('AI_NOT_CONFIGURED');
+  const models = [...new Set([env.AI_MODEL.trim(), ...env.AI_FALLBACK_MODELS])];
   const callId = randomUUID();
+  for (const [index, model] of models.entries()) {
+    try {
+      const data = await completeOne(schema, system, input, promptType, model, callId);
+      return { data, model };
+    } catch (error) {
+      const next = models[index + 1];
+      if (!canFallback(error)) throw error;
+      if (!next) {
+        console.error(JSON.stringify({ event: 'ai_models_exhausted', call_id: callId, models_tried: models.length, code: error instanceof Error ? error.message : 'AI_REQUEST_FAILED' }));
+        throw error;
+      }
+      console.warn(JSON.stringify({ event: 'ai_model_fallback', call_id: callId, from_model: model, to_model: next, code: error instanceof Error ? error.message : 'AI_REQUEST_FAILED' }));
+    }
+  }
+  throw new Error('AI_NOT_CONFIGURED');
+}
+
+// Preserve the data-only contract for any callers that do not need model provenance.
+export async function complete<T>(schema: z.ZodType<T>, system: string, input: unknown, promptType?: string): Promise<T> {
+  return (await completeWithModel(schema, system, input, promptType)).data;
+}
+
+async function completeOne<T>(schema: z.ZodType<T>, system: string, input: unknown, promptType: string | undefined, model: string, callId: string): Promise<T> {
   let feedback = '';
   let previousOutput: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -87,7 +118,7 @@ export async function complete<T>(schema: z.ZodType<T>, system: string, input: u
     let responseData: unknown;
     try {
       const response = await withTransientRetry(() => axios.post<unknown>(`${env.AI_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
-        model: env.AI_MODEL, temperature: 0.3, max_tokens: 2400,
+        model, temperature: 0.3, max_tokens: 2400,
         response_format: { type: 'json_object' },
         messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }],
       }, { headers: { Authorization: `Bearer ${env.AI_API_KEY}`, 'Content-Type': 'application/json' }, timeout: env.AI_TIMEOUT_MS, maxRedirects: 0, maxContentLength: 1000000 }));
@@ -101,16 +132,17 @@ export async function complete<T>(schema: z.ZodType<T>, system: string, input: u
       usage: z.unknown().optional(),
     }).safeParse(responseData);
     if (!envelope.success) {
-      console.warn(JSON.stringify({ event: 'ai_output_invalid', call_id: callId, attempt: attempt + 1, stage: 'response_envelope', issue_count: envelope.error.issues.length, issues: validationIssues(envelope.error) }));
+      console.warn(JSON.stringify({ event: 'ai_output_invalid', call_id: callId, model, attempt: attempt + 1, stage: 'response_envelope', issue_count: envelope.error.issues.length, issues: validationIssues(envelope.error) }));
       feedback = 'Return a valid JSON object with the exact required schema.';
       continue;
     }
     const choice = envelope.data.choices[0]!;
     const finishReason = z.enum(['stop', 'length', 'tool_calls', 'content_filter', 'function_call']).safeParse(choice.finish_reason);
     const usage = z.object({ prompt_tokens: z.number().int().nonnegative().optional(), completion_tokens: z.number().int().nonnegative().optional(), completion_tokens_details: z.object({ reasoning_tokens: z.number().int().nonnegative().optional() }).optional() }).safeParse(envelope.data.usage);
+    if (choice.finish_reason === 'content_filter') throw new Error('AI_CONTENT_BLOCKED');
     const content = choice.message.content;
     const metadata = {
-      call_id: callId, attempt: attempt + 1,
+      call_id: callId, model, attempt: attempt + 1,
       prompt_type: promptType ?? null,
       request_characters: Array.from(system).length + Array.from(userContent).length,
       prompt_tokens: usage.success ? usage.data.prompt_tokens ?? null : null,
@@ -150,6 +182,6 @@ export async function complete<T>(schema: z.ZodType<T>, system: string, input: u
     }
     feedback = [...grouped].map(([message, paths]) => `${paths.join(', ')}: ${message}`).join('; ').slice(0, 2000);
   }
-  console.error(JSON.stringify({ event: 'ai_output_exhausted', call_id: callId, attempts: 2, code: 'AI_OUTPUT_INVALID' }));
+  console.error(JSON.stringify({ event: 'ai_output_exhausted', call_id: callId, model, attempts: 2, code: 'AI_OUTPUT_INVALID' }));
   throw new Error('AI_OUTPUT_INVALID');
 }

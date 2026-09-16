@@ -46,7 +46,13 @@ export function dashboardHtml(snapshot: Snapshot, style: EditorialStyle): string
       }
     }
     svg += label(left, top + height + 24, stamp(start), 12) + label(left + width - 115, top + height + 24, stamp(end), 12);
-    return svg + label(left, top + height + 47, mode === 'accounts' ? 'Long / Short · % tài khoản · không phải vị thế' : 'Mẫu gần nhất: ' + number(points.at(-1)!.value), 13) + '</g>';
+    if (mode === 'accounts') {
+      const last = points.at(-1)!;
+      svg += label(left, top + height + 47, 'Long ' + number(last.value) + '%', 14, color);
+      svg += label(left + 155, top + height + 47, 'Short ' + number(last.short ?? 0) + '%', 14, theme.down);
+      return svg + '</g>';
+    }
+    return svg + label(left, top + height + 47, 'Mẫu gần nhất: ' + number(points.at(-1)!.value), 13) + '</g>';
   }
   const panels = [
     { key: 'price', title: 'Giá spot · nến đóng một giờ · USDT', points: price, mode: 'line' as const, color: theme.accent },

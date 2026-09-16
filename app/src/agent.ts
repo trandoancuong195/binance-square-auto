@@ -39,10 +39,11 @@ export async function generatePost(symbol: string, snapshotId?: string): Promise
     let title = `${symbol} — Bản nháp dữ liệu`;
     let content = `${title}\n\nChưa có nội dung phân tích bằng AI.\n\n${fixedFacts(context)}`;
     const writerMode = env.AI_WRITER_ENABLED ? 'ai' : 'data_only';
-    const aiModel = env.AI_WRITER_ENABLED ? env.AI_MODEL : null;
+    let aiModel: string | null = null;
     if (env.AI_WRITER_ENABLED) {
       stage = 'ai_writer';
       const draft = await writeDraft(context, decision);
+      aiModel = draft.aiModel;
       output = draft.output;
       content = draft.content;
       title = output.post.title;

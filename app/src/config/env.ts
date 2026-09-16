@@ -17,6 +17,7 @@ const schema = z.object({
   AI_WRITER_ENABLED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
   AI_BASE_URL: z.union([z.string().url(), z.literal('')]).default(''),
   AI_API_KEY: z.string().default(''), AI_MODEL: z.string().default(''),
+  AI_FALLBACK_MODELS: z.string().default('').transform(v => [...new Set(v.split(',').map(m => m.trim()).filter(Boolean))]).pipe(z.array(z.string().regex(/^[A-Za-z0-9_./:-]{1,120}$/)).max(4)),
   AI_TIMEOUT_MS: positive(60000),
   MIN_TREND_SCORE: z.coerce.number().min(0).max(100).default(75),
   MIN_QUOTE_VOLUME: positive(10000000),

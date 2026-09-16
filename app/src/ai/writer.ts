@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { complete } from './client.js';
+import { completeWithModel } from './client.js';
 import { presentation, inlineFacts, fillFacts } from './presentation.js';
 import { draftSchema, type Decision, type DraftOutput } from './types.js';
 import { writerPrompt, type WriterPromptType } from './prompts.js';
@@ -22,7 +22,7 @@ export function fixedFacts(context: AgentContext): string {
 function assemblePost(p: DraftOutput['post'], facts: string, layout = 0): string {
   const scenarios = layout === 1 ? [p.bearishScenario, p.bullishScenario] : [p.bullishScenario, p.bearishScenario];
   const body = layout === 2 ? [p.hook, p.interpretation, p.risk, ...scenarios] : [p.hook, p.interpretation, ...scenarios, p.risk];
-  return [p.title, ...body, facts, p.tags.join(' ')].join('\n\n');
+  return [p.title, ...body, p.tags.join(' ')].join('\n\n');
 }
 function resolveOutput(output: DraftOutput, facts: Record<string, string>): DraftOutput {
   const post = { ...output.post };
@@ -128,6 +128,6 @@ export async function writeDraft(context: AgentContext, decision: Decision) {
     allowedStages: forcedInvalidation ? ['INVALIDATED'] : previous ? transitions[previous.stage] ?? [] : ['WATCHING', 'BREAKOUT_ATTEMPT', 'BREAKOUT_CONFIRMED'],
     allowedLevels: [...new Set(allowedLevels)], postTextBudget, inlineFacts: values, editorialStyle: display.style,
   };
-  const output = await complete(schema, writerPrompt(promptType, display.style), input, `${promptType}:${display.style}`);
-  return { output: resolveOutput(output, values), content: render(output), editorialStyle: display.style };
+  const { data: output, model } = await completeWithModel(schema, writerPrompt(promptType, display.style), input, `${promptType}:${display.style}`);
+  return { output: resolveOutput(output, values), content: render(output), editorialStyle: display.style, aiModel: model };
 }

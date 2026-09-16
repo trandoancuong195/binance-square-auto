@@ -108,7 +108,7 @@
         -100
       ],
       "parameters": {
-        "jsCode": "return ($input.first().json.posts ?? []).map(post => ({ json: post }));"
+        "jsCode": "const post = $input.first().json.post ?? $input.first().json.posts?.[0]; return post ? [{ json: post }] : [];"
       }
     },
     {

@@ -10,12 +10,12 @@ Hai lớp độc lập: NEW_POST / CONTINUE_SERIES / UPDATE_SERIES / INVALIDATED
 
 Chọn ổn định theo symbol + asOf trong các phong cách đủ dữ liệu, tránh phong cách bài gần nhất nếu có lựa chọn khác. Ba bố cục thay đổi thứ tự hai kịch bản hoặc vị trí đoạn rủi ro. Metadata lưu editorialStyle; chart dùng cùng phong cách. Khi DB_CONTEXT_ENABLED=false, không có lịch sử để tránh lặp, vẫn chọn dựa trên snapshot.
 
-Giọng văn trò chuyện, góc nhìn cá nhân ở mức quan sát, không giả vờ có vị thế đầu tư. Tối đa ba emoji, hài hước nhẹ khi phù hợp; INVALIDATED phải nghiêm túc. Bỏ các nhãn mục cứng và bảng số liệu dài trong bài AI. Luôn giữ hai kịch bản có điều kiện và rủi ro. Không suy diễn tin tức/MA99/khung tuần hoặc coi thay đổi 24h là phân tích nến ngày.
+Giọng văn trò chuyện, góc nhìn cá nhân ở mức quan sát, không giả vờ có vị thế đầu tư. Tối đa hai emoji, hài hước nhẹ khi phù hợp; INVALIDATED phải nghiêm túc. Bỏ các nhãn mục cứng và bảng số liệu dài trong bài AI. Luôn giữ hai kịch bản có điều kiện và rủi ro. Không suy diễn tin tức/MA99/khung tuần hoặc coi thay đổi 24h là phân tích nến ngày.
 
 ## Số liệu trong câu
 AI dùng placeholder trong inlineFacts, ví dụ: “{{asset}} đang quanh {{price}} USDT, còn hỗ trợ một giờ ở {{hour_support}}”. Backend thay bằng giá từ snapshot, từ chối placeholder lạ và chữ số AI tự gõ trong văn xuôi. Quarter/hour/fourhour tương ứng 15m/1h/4h. Chỉ số EMA fast/medium/slow tương ứng 20/50/200.
 
-Schema lưu trữ chấp nhận số trong bài đã render để review/approve tương thích; kiểm tra nguồn placeholder nằm tại writeDraft. Kiểm tra độ dài trường sau thay thế và tổng bài theo limits.ts (1.200–3.500 ký tự, mục tiêu 1.350). Cách này kiểm soát giá trị số, không chứng minh mọi diễn giải của AI là chính xác. Tin tức, số liệu cơ bản và MA99 chưa có nguồn nên chưa được bổ sung.
+Schema lưu trữ chấp nhận số trong bài đã render để review/approve tương thích; kiểm tra nguồn placeholder nằm tại writeDraft. Kiểm tra độ dài trường sau thay thế và tổng bài theo limits.ts (700–1.000 ký tự, mục tiêu 850). Cách này kiểm soát giá trị số, không chứng minh mọi diễn giải của AI là chính xác. Tin tức, số liệu cơ bản và MA99 chưa có nguồn nên chưa được bổ sung.
 
 AI chỉ nhận tối đa bốn mẫu gần nhất mỗi chuỗi phái sinh và hai trích đoạn lịch sử (400 ký tự/đoạn), không gửi toàn bộ chuỗi 48 mẫu/chart/metadata. Vẫn tối đa hai lần tạo output; log prompt_type gồm ngữ cảnh:phong cách và prompt_tokens từ nhà cung cấp.
 
@@ -46,3 +46,5 @@ Báo cáo lần cuối: output/verification-2026-09-15T10-25-06-733Z/report.json
 AI_FALLBACK_MODELS cấu hình danh sách model dự phòng theo thứ tự sau AI_MODEL. Giới hạn hai lần sửa output áp dụng cho từng model; khi hết danh sách thì báo lỗi. Xem [model-fallback.md](model-fallback.md) để biết lỗi nào được chuyển model, cấu hình Gemini free tier và kiểm chứng không DB.
 
 Đã chạy build và 14 kiểm tra giả lập fallback thành công ngày 2026-09-16; không gọi provider thật, không dùng DB. metadata.aiModel ghi model thực tế thành công.
+
+Thay đổi prompt ngắn: mục tiêu 850 ký tự cho bài hoàn chỉnh, một luận điểm chính và hai đến ba số liệu. Giọng hòa đồng, xưng mình khi tự nhiên; gộp hướng dẫn giọng văn để tránh lặp và mâu thuẫn. Lần chỉnh prompt/giới hạn này chưa chạy build hoặc gọi AI kiểm chứng; kết quả kiểm chứng trước đó không xác nhận chất lượng prompt mới.

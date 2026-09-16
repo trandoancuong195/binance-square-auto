@@ -13,7 +13,7 @@ export function presentation(context: AgentContext) {
   return { style: choices[seed % choices.length]!, layout: seed % 3 };
 }
 export const STYLE_PROMPTS: Record<EditorialStyle, string> = {
-  price: 'Góc nhìn vùng giá: mở bằng sự giằng co hoặc vùng hợp lưu thực có, dẫn từ khung bốn giờ về một giờ. Giọng tâm sự quan sát: “tôi đang chú ý…”.',
+  price: 'Góc nhìn vùng giá: mở bằng sự giằng co hoặc vùng hợp lưu thực có, dẫn từ khung bốn giờ về một giờ. Giọng tâm sự quan sát: “mình đang chú ý…”.',
   volume: 'Góc nhìn giao dịch: mở từ volume nổi bật, đối chiếu phản ứng giá. Phân biệt giao dịch với dòng tiền ròng; không suy ra cá voi gom hàng từ volume.',
   oi: 'Góc nhìn vị thế mở: dẫn từ biến động OI rồi đối chiếu giá và funding. OI tăng là hợp đồng mở tăng, không tự chứng minh tiền mới mua hay squeeze.',
   positioning: 'Góc nhìn đám đông: dẫn từ tỷ lệ tài khoản long/short, đối chiếu giá và OI. Đây là tỷ lệ tài khoản, không phải khối lượng vị thế; không đảm bảo đảo chiều.',

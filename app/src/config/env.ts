@@ -22,6 +22,8 @@ const schema = z.object({
   MIN_TREND_SCORE: z.coerce.number().min(0).max(100).default(75),
   MIN_QUOTE_VOLUME: positive(10000000),
   SCANNER_SHORTLIST: positive(20).refine(v => v <= 50),
+  TRENDING_SYMBOL_COOLDOWN_HOURS: z.coerce.number().int().min(0).max(168).default(12),
+  TRENDING_MAX_CANDIDATE_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   SNAPSHOT_MAX_AGE_MINUTES: positive(15),
   OUTPUT_DIR: z.string().default('output'), PUPPETEER_EXECUTABLE_PATH: z.string().default(''),
 });

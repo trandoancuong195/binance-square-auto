@@ -13,7 +13,7 @@ MVP tạo bản nháp Binance Square tiếng Việt từ dữ liệu Binance, c�
 - Futures cùng symbol: funding, OI hiện tại, thay đổi OI qua hai mẫu 1h cuối, lịch sử tối đa 48 mẫu 1h cho OI và tỷ lệ tài khoản long/short. Token không có hợp đồng tương ứng được ghi thiếu dữ liệu; không tự chuyển sang hợp đồng `1000...`.
 - Lưu snapshot với toàn bộ OHLCV và kết quả tính toán. AI chỉ nhận bản tóm tắt không có mảng nến.
 - Mọi token trending do scanner trả về đều được đưa vào luồng viết bài. Code xác định loại bài `NEW_POST`, `CONTINUE_SERIES` hoặc `UPDATE_SERIES`; không gọi AI decision và không trả `SKIP` trong luồng generate.
-- AI viết theo bốn góc kể chuyện và ba bố cục; code thay placeholder bằng số liệu snapshot ngay trong câu, thay cho bảng số liệu dài. Kiểm tra JSON, độ dài 1.200–3.500 ký tự (mục tiêu bài ngắn gọn khoảng 1.350), mức giá có nguồn, chuyển stage, lặp nội dung và một số tuyên bố lợi nhuận. Giới hạn dùng chung trong `app/src/ai/limits.ts`; `series.nextWatch` có 1–3 mục. Khi đầu ra không đạt schema, lần thử sau nhận JSON trước đó và lỗi cụ thể để sửa.
+- AI viết theo bốn góc kể chuyện và ba bố cục; code thay placeholder bằng số liệu snapshot ngay trong câu, thay cho bảng số liệu dài. Kiểm tra JSON, độ dài 700–1.000 ký tự (mục tiêu bài ngắn gọn khoảng 850), mức giá có nguồn, chuyển stage, lặp nội dung và một số tuyên bố lợi nhuận. Giới hạn dùng chung trong `app/src/ai/limits.ts`; `series.nextWatch` có 1–3 mục. Khi đầu ra không đạt schema, lần thử sau nhận JSON trước đó và lỗi cụ thể để sửa.
 - Chart kỹ thuật 1h/4h có bốn bảng màu theo góc bài. Dashboard PNG bổ sung giá/volume spot, OI và tỷ lệ tài khoản long/short theo giờ; dùng dữ liệu thật, phần thiếu được ghi rõ. Xem [luồng viết và chart](app/src/ai/README.md).
 - Trang `/review` xem chart/nội dung, duyệt hoặc loại draft. Khóa API không lưu trong localStorage.
 - Pipeline chạy nền, có mã lượt chạy, idempotency key, khóa chống chạy trùng và kết quả từng token trong PostgreSQL.
@@ -137,7 +137,7 @@ Gọi trực tiếp `/post/generate/:symbol` là yêu cầu viết bài cho symb
 - `APPROVED` là đã duyệt nội bộ, **chưa đăng Binance Square**. Trường `published_at` và `square_post_id` vẫn trống.
 - Invalidation kiểm tra giá nến 1h đã đóng theo bias: bullish xuống dưới mức vô hiệu, bearish lên trên mức vô hiệu. Series neutral không đặt mức vô hiệu. `INVALIDATED` hoặc `CLOSED` sẽ đóng series khi duyệt.
 - Bài gần đây được đọc gồm cả draft và approved để AI viết tiếp đúng ngữ cảnh. Bài đã loại (`FAILED`) không được dùng làm lịch sử nội dung.
-- Không áp dụng cooldown, giới hạn draft/ngày hoặc giới hạn draft/lượt. Những biến cũ `POST_COOLDOWN_HOURS`, `BTC_ETH_COOLDOWN_HOURS`, `MAX_POSTS_PER_DAY`, `MAX_TOKENS_PER_SCAN` trong `.env` không còn được sử dụng, có thể xóa.
+- Luồng tạo draft chung không áp dụng cooldown, giới hạn draft/ngày hoặc giới hạn draft/lượt. Những biến cũ `POST_COOLDOWN_HOURS`, `BTC_ETH_COOLDOWN_HOURS`, `MAX_POSTS_PER_DAY`, `MAX_TOKENS_PER_SCAN` trong `.env` không còn được sử dụng, có thể xóa. Riêng `/posts/trending` có cooldown lựa chọn để luân phiên symbol cho luồng tự động đăng; cấu hình bằng `TRENDING_SYMBOL_COOLDOWN_HOURS`.
 - Nội dung tương tự bài gần đây chỉ được ghi nhận trong `quality.warnings` và hiển thị khi duyệt; không chặn lưu draft. Mỗi lượt quét mới có thể tạo bài mới cho cùng token.
 - Cùng snapshot đã có bài sẽ trả bài đó, không gọi AI lại. Muốn tạo lại bài đã loại, tạo snapshot mới bằng analyze hoặc đợi snapshot cache hết hạn.
 - Quality Gate hiện kiểm tra nội dung và tính điểm heuristic. Các draft vượt kiểm tra cứng được lưu để duyệt kể cả điểm dưới 75. Điểm >=75 cũng không kích hoạt publish. Chất lượng hình ảnh/nhận định vẫn cần con người kiểm tra.
@@ -163,7 +163,7 @@ Các endpoint dữ liệu yêu cầu header `X-API-Key`. `/health` và tài nguy
 | POST | `/posts/:id/approve` | Duyệt và cập nhật series/memory |
 | POST | `/posts/:id/reject` | Loại draft |
 | POST | `/pipeline/run` | Khởi động lượt chạy nền |
-| POST | `/posts/trending` | Khởi động/poll cùng requestKey; chọn token điểm cao nhất và trả tối đa một bài mỗi lượt cho n8n |
+| POST | `/posts/trending` | Khởi động/poll cùng requestKey; chọn thông minh theo Trend Score + lịch sử symbol và trả tối đa một bài mỗi lượt cho n8n |
 | GET | `/pipeline/runs` | Hai mươi lượt gần nhất |
 | GET | `/pipeline/runs/:id` | Trạng thái và kết quả lượt chạy |
 | POST | `/post/publish/:id` | Chưa triển khai, luôn trả 501 |
@@ -174,9 +174,9 @@ Các endpoint dữ liệu yêu cầu header `X-API-Key`. `/health` và tài nguy
 
 ## n8n
 
-Để nối vào workflow đăng bài bên ngoài, dùng `POST /posts/trending` và mẫu [crypto-square-trending-workflow.json](n8n/crypto-square-trending-workflow.json). Endpoint trả 202 trong lúc tạo bài; gọi lại cùng requestKey đến khi `done:true`, rồi tách `posts` cho node đăng. Không tự đăng hoặc đánh dấu PUBLISHED; việc chống đăng trùng ở dịch vụ bên ngoài cần lưu post ID. Chi tiết cấu hình, retry và giới hạn tại [trending-endpoint.md](n8n/trending-endpoint.md).
+Để nối vào workflow đăng bài bên ngoài, dùng `POST /posts/trending` và mẫu [crypto-square-trending-workflow.json](n8n/crypto-square-trending-workflow.json). Endpoint trả 202 trong lúc tạo bài; gọi lại cùng requestKey đến khi `done:true`, rồi lấy `post` cho node đăng (`posts` vẫn được giữ để tương thích). Mặc định symbol đã được chọn thành công sẽ được làm nguội 12 giờ; endpoint ưu tiên token điểm cao nhất ngoài cooldown, hoặc token lâu chưa được chọn nhất nếu mọi ứng viên đều đang cooldown. Nếu tạo bài/chart lỗi, endpoint thử tối đa ba ứng viên theo thứ tự đã xếp hạng. Điều chỉnh bằng `TRENDING_SYMBOL_COOLDOWN_HOURS` và `TRENDING_MAX_CANDIDATE_ATTEMPTS`. Không tự đăng hoặc đánh dấu PUBLISHED; việc chống đăng trùng ở dịch vụ bên ngoài cần lưu post ID. Chi tiết cấu hình, retry và giới hạn tại [trending-endpoint.md](n8n/trending-endpoint.md).
 
-1. Import `n8n/crypto-square-draft-workflow.json`.
+1. Import `n8n/crypto-square-trending-workflow.json`.
 2. Tạo credential loại **Header Auth**, tên header `X-API-Key`, giá trị lấy từ `app/.env`.
 3. Chọn credential đó trong hai node `Start pipeline` và `Read run`.
 4. Đổi URL ở cả hai node sang địa chỉ Node service mà n8n truy cập được. Nếu n8n trong container, `127.0.0.1` là chính container; cần cấu hình mạng private và `HOST` phù hợp.

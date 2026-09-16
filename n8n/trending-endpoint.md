@@ -6,11 +6,22 @@
 { "requestKey": "n8n-trending-12345" }
 ```
 
-Lần đầu khởi động pipeline quét trending, chọn đúng một token có Trend Score cao nhất trong danh sách đạt ngưỡng và chỉ tạo bài cho token đó. `posts` luôn có tối đa một bài; không tạo hàng loạt rồi bỏ các bài dư. Nếu token được chọn lỗi AI/chart, trả lỗi trong result và posts rỗng, không thử thêm token khác trong lượt đó. Endpoint `/pipeline/run` riêng vẫn xử lý toàn bộ danh sách như trước.
+Lần đầu khởi động pipeline quét trending và xếp ứng viên theo hai lớp: Trend Score của lượt hiện tại và lịch sử symbol đã được `/posts/trending` chọn thành công. Endpoint ưu tiên token điểm cao nhất chưa được chọn trong thời gian cooldown. Nếu mọi ứng viên đều đang cooldown, token lâu chưa được chọn nhất được ưu tiên và token vừa xuất hiện gần nhất bị đẩy xuống cuối khi còn lựa chọn khác. Trường hợp scanner chỉ có một token đạt ngưỡng thì token đó vẫn có thể lặp lại.
 
-Khi đang chạy, trả HTTP 202: `done:false`, `posts:[]`, `retryAfterSeconds:30`. Đợi 30 giây rồi POST lại cùng endpoint, cùng requestKey. Backend dùng lượt chạy cũ thay vì tạo thêm lượt mới. Không tạo requestKey bằng thời gian hiện tại bên trong vòng poll. Với lượt cũ từng tạo nhiều bài, endpoint chỉ chọn post đầu tiên; nếu ảnh bài đó đã xóa thì trả rỗng, không chuyển sang bài kế tiếp khi poll lại.
+`post` là bài duy nhất sẵn sàng cho node đăng; `posts` vẫn chứa tối đa một phần tử để tương thích workflow cũ. Pipeline chỉ tạo đến khi có một bài dùng được. Nếu ứng viên đầu lỗi AI/chart, pipeline thử ứng viên kế tiếp, mặc định tối đa ba token. Endpoint `/pipeline/run` riêng vẫn xử lý toàn bộ danh sách như trước và không dùng quy tắc luân phiên này.
 
-Khi kết thúc, trả HTTP 200 với `done:true`, `status:SUCCEEDED|FAILED`, `hasPosts`, `posts` và `result`. Mỗi post có `id`, `symbol`, `title`, `content`, `chart_paths`, `status`, `dedupeKey`. Không có trending thì `posts:[]`; lỗi từng token nằm trong `result`. Một lượt FAILED vẫn có thể trả những bài đã tạo thành công.
+Cấu hình trong `app/.env`:
+
+```dotenv
+TRENDING_SYMBOL_COOLDOWN_HOURS=12
+TRENDING_MAX_CANDIDATE_ATTEMPTS=3
+```
+
+Cooldown dựa trên các lượt `/posts/trending` trước đã tạo được `postId`, không phụ thuộc việc dịch vụ bên ngoài có cập nhật trạng thái PUBLISHED hay không. Đặt cooldown bằng `0` để luôn ưu tiên Trend Score; giới hạn số lần thử hợp lệ là 1–10.
+
+Khi đang chạy, trả HTTP 202: `done:false`, `post:null`, `posts:[]`, `retryAfterSeconds:30`. Đợi 30 giây rồi POST lại cùng endpoint, cùng requestKey. Backend dùng lượt chạy cũ thay vì tạo thêm lượt mới. Không tạo requestKey bằng thời gian hiện tại bên trong vòng poll. Với lượt cũ từng tạo nhiều bài, endpoint chỉ chọn post đầu tiên; nếu ảnh bài đó đã xóa thì trả rỗng, không chuyển sang bài kế tiếp khi poll lại.
+
+Khi kết thúc, trả HTTP 200 với `done:true`, `status:SUCCEEDED|FAILED`, `hasPosts`, `post`, `posts`, `selection` và `result`. Bài có `id`, `symbol`, `title`, `content`, `chart_paths`, `status`, `dedupeKey`. Không có trending thì `post:null` và `posts:[]`; lỗi từng token nằm trong `result.results`. `selection` cho biết chiến lược, cooldown, lịch sử symbol gần đây và thứ tự ứng viên đã thử; cùng dữ liệu này cũng nằm trong `result.selection` để lưu trọn kết quả lượt chạy. Một lượt FAILED vẫn có thể trả bài đã tạo thành công nếu scanner gặp lỗi ở token khác.
 
 Chỉ trả bài AI đã qua quality gate, có nội dung và chart, còn DRAFT/APPROVED, chưa có square_post_id. Cần bật `AI_WRITER_ENABLED=true`; nếu tắt trả `AI_WRITER_DISABLED`. `DB_CONTEXT_ENABLED=false` vẫn dùng được, nhưng PostgreSQL vẫn cần cho pipeline/draft.
 
@@ -18,13 +29,13 @@ Chỉ trả bài AI đã qua quality gate, có nội dung và chart, còn DRAFT/
 
 Import `crypto-square-trending-workflow.json`. Chọn credential Header Auth (`X-API-Key`) trong node `Fetch trending posts`. URL mẫu dùng `http://host.docker.internal:3100/posts/trending`, giữ nguyên cách kết nối Docker hiện có. URL là chuỗi URL thuần, không phải cú pháp link Markdown.
 
-Luồng: lịch 45 phút → HTTP → IF done → nếu chưa xong đợi 30 giây rồi gọi lại; nếu xong tách posts thành từng item. Nối node cuối `Posts for publishing` vào node đăng bài của bạn. Mỗi item giữ `$json.content` và `$json.chart_paths`, nên vẫn dùng ánh xạ `/data/charts/` nếu thư mục output đã được mount đúng vào container n8n. Không cần gọi `/posts/4` cố định nữa. Node cuối không trả item khi posts rỗng, nên node đăng không chạy. Poll dừng báo lỗi sau 45 phút; backend có thể vẫn chạy, tiếp tục truy vấn bằng requestKey cũ để lấy kết quả.
+Luồng: lịch 45 phút → HTTP → IF done → nếu chưa xong đợi 30 giây rồi gọi lại; nếu xong lấy `post` thành một item. Nối node cuối `Posts for publishing` vào node đăng bài của bạn. Item giữ `$json.content` và `$json.chart_paths`, nên vẫn dùng ánh xạ `/data/charts/` nếu thư mục output đã được mount đúng vào container n8n. Không cần gọi `/posts/4` cố định nữa. Node cuối không trả item khi `post` là null, nên node đăng không chạy. Poll dừng báo lỗi sau 45 phút; backend có thể vẫn chạy, tiếp tục truy vấn bằng requestKey cũ để lấy kết quả.
 
 Workflow không nhúng credential, không tự kích hoạt lịch và không chạy lệnh đăng. Bật lịch sau khi chạy thử có chủ đích. Theo dõi `result` của HTTP để phát hiện lỗi một phần.
 
 ## Retry và đăng trùng
 
-requestKey chống tạo trùng lượt, không chứng minh bài đã đăng thành công ở Binance. Gọi lại một lượt đã hoàn tất có thể trả lại cùng các post. Node đăng cần lưu/kiểm tra `dedupeKey` hoặc `id` trong kho trạng thái bền vững; không tự retry node đăng khi chưa biết lần trước đã thành công hay chưa. Lượt lịch mới có requestKey mới và có thể tạo bài mới cho cùng token vẫn trending. Endpoint không cập nhật PUBLISHED hay series và không gọi Binance để đăng bài.
+requestKey chống tạo trùng lượt, không chứng minh bài đã đăng thành công ở Binance. Gọi lại một lượt đã hoàn tất trả lại đúng `post` cũ. Node đăng cần lưu/kiểm tra `dedupeKey` hoặc `id` trong kho trạng thái bền vững; không tự retry node đăng khi chưa biết lần trước đã thành công hay chưa. Lượt lịch mới có requestKey mới sẽ áp dụng cooldown/luân phiên symbol. Endpoint không cập nhật PUBLISHED hay series và không gọi Binance để đăng bài.
 
 Không chèn trực tiếp nội dung AI vào mã shell bằng heredoc có delimiter cố định: nội dung có thể đóng heredoc. Khi tích hợp script đăng, truyền dữ liệu qua file JSON hoặc đối số được escape đúng. Đưa khóa API vào credential của n8n thay vì export trong workflow; thay khóa đã chia sẻ trong hội thoại và cập nhật credential.
 

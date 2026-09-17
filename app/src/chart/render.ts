@@ -6,7 +6,7 @@ import { appRoot, env, outputRoot } from '../config/env.js';
 import { SYMBOL_PATTERN } from '../config/constants.js';
 import { ema } from '../indicators/index.js';
 import type { Snapshot } from '../types.js';
-import { presentation, type EditorialStyle } from '../ai/presentation.js';
+import { presentation, type PostPresentation } from '../ai/presentation.js';
 import { chartThemes, dashboardHtml } from './dashboard.js';
 
 async function loadChartBundle(): Promise<string> {
@@ -35,6 +35,7 @@ function chartFailure(error: unknown) {
   const message = error instanceof Error ? error.message : '';
   const nativeCode = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : '';
   if (message === 'INVALID_CHART_PATH') return { code: 'INVALID_CHART_PATH', hint: 'Chart symbol or snapshot ID is invalid.' };
+  if (message === 'INVALID_CHART_PLAN') return { code: 'INVALID_CHART_PLAN', hint: 'The selected chart plan must contain one dashboard and at most two technical charts.' };
   if (message === 'CHART_LIBRARY_BUNDLE_NOT_FOUND') return { code: 'CHART_LIBRARY_BUNDLE_NOT_FOUND', hint: 'The Lightweight Charts standalone bundle is missing. Check app/node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.js.' };
   if (/Running as root without --no-sandbox/i.test(message)) return { code: 'CHART_BROWSER_RUNNING_AS_ROOT', hint: 'Run PM2 and Chromium as a non-root account with the browser installed for that account.' };
   if (/No usable sandbox|SUID sandbox|Failed to move to new namespace|Operation not permitted.*sandbox/i.test(message)) return { code: 'CHART_BROWSER_SANDBOX_UNAVAILABLE', hint: 'Configure Chromium sandbox support for the application account on this VPS.' };
@@ -51,8 +52,8 @@ function chartFailure(error: unknown) {
   return { code: 'CHART_RENDER_FAILED', hint: 'Chart rendering failed at the reported stage.' };
 }
 
-export async function renderCharts(snapshot: Snapshot, style: EditorialStyle = presentation({ market: snapshot.analysis, recentPosts: [], activeSeries: [], previousThesis: null }).style): Promise<string[]> {
-  const theme = chartThemes[style];
+export async function renderCharts(snapshot: Snapshot, display: PostPresentation = presentation({ market: snapshot.analysis, recentPosts: [], activeSeries: [], previousThesis: null })): Promise<string[]> {
+  const theme = chartThemes[display.style];
   let stage = 'load_chart_library';
   let timeframe: string | null = null;
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
@@ -72,7 +73,9 @@ export async function renderCharts(snapshot: Snapshot, style: EditorialStyle = p
     await page.setRequestInterception(true);
     page.on('request', request => { void request.abort(); });
     const outputs: string[] = [];
-    for (const tf of ['1h', '4h'] as const) {
+    if (display.chartPlan.imageCount !== display.chartPlan.technicalTimeframes.length + 1
+      || display.chartPlan.imageCount > 3 || display.chartPlan.technicalTimeframes.length > 2) throw new Error('INVALID_CHART_PLAN');
+    for (const tf of display.chartPlan.technicalTimeframes) {
       timeframe = tf;
       stage = 'render_template';
       scriptFailed = false;
@@ -108,11 +111,11 @@ export async function renderCharts(snapshot: Snapshot, style: EditorialStyle = p
       await writeFile(path.join(outputRoot, relativePath), await page.screenshot({ type: 'png' }));
       outputs.push(relativePath.split(path.sep).join('/'));
     }
-    timeframe = 'dashboard';
+    timeframe = `dashboard-${display.chartPlan.dashboard}`;
     stage = 'render_dashboard';
     scriptFailed = false;
     await page.setViewport({ width: 1200, height: 900, deviceScaleFactor: 1 });
-    await page.setContent(dashboardHtml(snapshot, style));
+    await page.setContent(dashboardHtml(snapshot, display.style, display.chartPlan.dashboard));
     await page.evaluate(() => document.fonts.ready);
     const dashboardPath = path.join(directory, 'dashboard.png');
     stage = 'save_png';

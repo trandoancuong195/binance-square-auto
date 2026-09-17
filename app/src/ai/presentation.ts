@@ -1,16 +1,60 @@
 import type { AgentContext } from '../types.js';
 
 export type EditorialStyle = 'price' | 'volume' | 'oi' | 'positioning';
+export type DashboardTemplate = 'market' | 'derivatives' | 'timeframes';
+export type TechnicalTimeframe = '1h' | '4h';
+export type ChartPlan = { technicalTimeframes: TechnicalTimeframe[]; dashboard: DashboardTemplate; imageCount: number };
+export type PostPresentation = { style: EditorialStyle; layout: number; chartPlan: ChartPlan };
+
+const hash = (value: string) => Array.from(value).reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) >>> 0, 0);
+const previousDashboard = (context: AgentContext): DashboardTemplate | null => {
+  const plan = context.recentPosts[0]?.metadata.chartPlan;
+  if (typeof plan !== 'object' || plan === null || !('dashboard' in plan)) return null;
+  return plan.dashboard === 'market' || plan.dashboard === 'derivatives' || plan.dashboard === 'timeframes' ? plan.dashboard : null;
+};
+
 export function presentation(context: AgentContext) {
   const m = context.market, d = m.derivatives, f = m.frames['1h'];
   const eligible: EditorialStyle[] = ['price'];
   if (f.volume.ratio >= 1.2) eligible.push('volume');
   if (d.oiChange1h !== null && Math.abs(d.oiChange1h) >= 2 && (d.oiHistory?.length ?? 0) >= 2) eligible.push('oi');
   if (d.longShortRatio !== null && (d.longShortRatio >= 1.5 || d.longShortRatio <= 0.67) && (d.longShortHistory?.length ?? 0) >= 2) eligible.push('positioning');
-  const seed = Array.from(m.symbol + m.asOf).reduce((sum, c) => (sum * 31 + c.charCodeAt(0)) >>> 0, 0);
-  const alternatives = eligible.filter(style => style !== context.recentPosts[0]?.metadata.editorialStyle);
-  const choices = alternatives.length ? alternatives : eligible;
-  return { style: choices[seed % choices.length]!, layout: seed % 3 };
+  const seed = hash(m.symbol + m.asOf);
+  const hasDerivatives = (d.oiHistory?.length ?? 0) >= 2 || (d.longShortHistory?.length ?? 0) >= 2;
+  const hasDerivativesStory = hasDerivatives && eligible.some(style => style === 'oi' || style === 'positioning');
+  const dashboardChoices: DashboardTemplate[] = ['market', 'timeframes', ...(hasDerivativesStory ? ['derivatives' as const] : [])];
+  const previous = previousDashboard(context);
+  const freshDashboards = dashboardChoices.filter(template => template !== previous);
+  const dashboards = freshDashboards.length ? freshDashboards : dashboardChoices;
+  const dashboard = dashboards[hash(`${seed}:dashboard`) % dashboards.length]!;
+  const compatibleStyles = dashboard === 'derivatives'
+    ? eligible.filter(style => style === 'oi' || style === 'positioning')
+    : eligible.filter(style => style === 'price' || style === 'volume');
+  const alternatives = compatibleStyles.filter(style => style !== context.recentPosts[0]?.metadata.editorialStyle);
+  const choices = alternatives.length ? alternatives : compatibleStyles;
+  const style = choices[seed % choices.length]!;
+  const firstTimeframe: TechnicalTimeframe = hash(`${seed}:timeframe`) % 2 === 0 ? '1h' : '4h';
+  const technicalCount = dashboard === 'timeframes' ? 1 : style === 'price' ? 2 : 1 + hash(`${seed}:count`) % 2;
+  const technicalTimeframes: TechnicalTimeframe[] = technicalCount === 2
+    ? [firstTimeframe, firstTimeframe === '1h' ? '4h' : '1h']
+    : [firstTimeframe];
+  const chartPlan: ChartPlan = { technicalTimeframes, dashboard, imageCount: technicalTimeframes.length + 1 };
+  return { style, layout: seed % 3, chartPlan } satisfies PostPresentation;
+}
+
+export function chartPlanForWriter(plan: ChartPlan) {
+  const dashboardData: Record<DashboardTemplate, string[]> = {
+    market: ['spot price history', 'spot volume history', '24h change', 'hourly RSI', 'hourly volume ratio'],
+    derivatives: ['open interest history', 'long-short account history', 'funding rate', 'one-hour OI change'],
+    timeframes: ['15m/1h/4h trend', '15m/1h/4h price change', '15m/1h/4h RSI', '15m/1h/4h volume ratio'],
+  };
+  return {
+    imageCount: plan.imageCount,
+    charts: [
+      ...plan.technicalTimeframes.map(timeframe => ({ template: `technical-${timeframe}`, visibleData: ['closed candles', 'volume', 'EMA20/50/200', 'support/resistance'] })),
+      { template: `dashboard-${plan.dashboard}`, visibleData: dashboardData[plan.dashboard] },
+    ],
+  };
 }
 export const STYLE_PROMPTS: Record<EditorialStyle, string> = {
   price: 'Góc nhìn vùng giá: mở bằng sự giằng co hoặc vùng hợp lưu thực có, dẫn từ khung bốn giờ về một giờ. Giọng tâm sự quan sát: “mình đang chú ý…”.',

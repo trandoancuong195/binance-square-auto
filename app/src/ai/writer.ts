@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { completeWithModel } from './client.js';
-import { presentation, inlineFacts, fillFacts } from './presentation.js';
+import { chartPlanForWriter, presentation, inlineFacts, fillFacts, type PostPresentation } from './presentation.js';
 import { draftSchema, type Decision, type DraftOutput } from './types.js';
 import { writerPrompt, type WriterPromptType } from './prompts.js';
 import { POST_MIN_CHARACTERS, POST_TARGET_CHARACTERS, POST_MAX_CHARACTERS } from './limits.js';
@@ -39,8 +39,7 @@ const transitions: Record<string, string[]> = {
   RETEST: ['RETEST', 'CONTINUATION', 'INVALIDATED', 'CLOSED'],
   CONTINUATION: ['CONTINUATION', 'RETEST', 'INVALIDATED', 'CLOSED'],
 };
-export async function writeDraft(context: AgentContext, decision: Decision) {
-  const display = presentation(context);
+export async function writeDraft(context: AgentContext, decision: Decision, display: PostPresentation = presentation(context)) {
   const values = inlineFacts(context);
   const facts = `${context.market.symbol} · ${context.market.asOf.slice(0, 16).replace('T', ' ')} UTC · Binance`;
   const render = (output: DraftOutput) => assemblePost(resolveOutput(output, values).post, facts, display.layout);
@@ -127,7 +126,9 @@ export async function writeDraft(context: AgentContext, decision: Decision) {
       }),
     allowedStages: forcedInvalidation ? ['INVALIDATED'] : previous ? transitions[previous.stage] ?? [] : ['WATCHING', 'BREAKOUT_ATTEMPT', 'BREAKOUT_CONFIRMED'],
     allowedLevels: [...new Set(allowedLevels)], postTextBudget, inlineFacts: values, editorialStyle: display.style,
+    chartPlan: chartPlanForWriter(display.chartPlan),
   };
-  const { data: output, model } = await completeWithModel(schema, writerPrompt(promptType, display.style), input, `${promptType}:${display.style}`);
+  const chartKey = [display.chartPlan.dashboard, ...display.chartPlan.technicalTimeframes].join(':');
+  const { data: output, model } = await completeWithModel(schema, writerPrompt(promptType, display.style), input, `${promptType}:${display.style}:${chartKey}`);
   return { output: resolveOutput(output, values), content: render(output), editorialStyle: display.style, aiModel: model };
 }

@@ -25,6 +25,14 @@ Khi kết thúc, trả HTTP 200 với `done:true`, `status:SUCCEEDED|FAILED`, `h
 
 Chỉ trả bài AI đã qua quality gate, có nội dung và chart, còn DRAFT/APPROVED, chưa có square_post_id. Cần bật `AI_WRITER_ENABLED=true`; nếu tắt trả `AI_WRITER_DISABLED`. `DB_CONTEXT_ENABLED=false` vẫn dùng được, nhưng PostgreSQL vẫn cần cho pipeline/draft.
 
+### Chart và nội dung cho n8n
+
+Luồng `/posts/trending` tự chọn bộ template dựa trên dữ liệu snapshot, truyền kế hoạch ảnh cho AI viết bài, render PNG rồi trả nội dung cùng ảnh. Không cần gọi riêng `/chart`, `/post/generate` hoặc duyệt thủ công. Mỗi bài mới có 2–3 ảnh: một dashboard (`market`, `derivatives` hoặc `timeframes`) và một hoặc hai chart kỹ thuật 1h/4h. Bài cũ có một ảnh vẫn được chấp nhận; API từ chối bài vượt ba ảnh, danh sách ảnh trùng hoặc rỗng.
+
+Trong cả `post` và `posts[0]`, `imageCount` là số ảnh thực tế trong `chart_paths`, `chartPlan` là kế hoạch đã lưu cùng bài (null với bài cũ chưa có metadata này). n8n tiếp tục dùng `content`, `chart_paths` và `dedupeKey` như trước. Duyệt ảnh theo mảng `chart_paths`: số lượng/thứ tự thay đổi theo kế hoạch, không mặc định index 0/1/2 luôn là 1h/4h/dashboard.
+
+Lượt mới gặp bài cũ không còn đủ điều kiện trả về (ảnh đã xóa, quá ba ảnh, bài bị loại, đã ghi nhận đăng, data-only hoặc không đạt quality gate) sẽ ghi `TRENDING_POST_NOT_READY` trong `result.results` và thử ứng viên tiếp theo trong giới hạn cấu hình. Poll lại cùng requestKey vẫn ghim bài đã chọn, không đổi sang bài khác sau khi ảnh bị xóa. Kiểm tra này xét danh sách đường dẫn trong database, không kiểm tra file trên đĩa hoặc xác nhận đăng thành công bên Binance.
+
 ## Nối workflow hiện có
 
 Import `crypto-square-trending-workflow.json`. Chọn credential Header Auth (`X-API-Key`) trong node `Fetch trending posts`. URL mẫu dùng `http://host.docker.internal:3100/posts/trending`, giữ nguyên cách kết nối Docker hiện có. URL là chuỗi URL thuần, không phải cú pháp link Markdown.
@@ -51,4 +59,4 @@ API không xác minh trạng thái trên Binance, không đổi status/PUBLISHED
 
 ## Deploy source
 
-Cập nhật source (gồm `app/src/pipeline.ts`, `app/src/api/trending.ts`, `app/src/api/routes.ts`), build trên VPS rồi restart PM2. Workflow trending hiện có không cần đổi: node `Posts for publishing` chỉ nhận tối đa một bài mỗi lượt lịch 45 phút. Không có thay đổi schema/migration cho endpoint này. Chưa chạy build/test hay đăng thử trong lần triển khai source này.
+Cập nhật source (gồm `app/src/pipeline.ts`, `app/src/api/trending.ts`, `app/src/trending-post.ts` và các thay đổi chart/writer), build trên VPS rồi restart PM2. Workflow trending hiện có dùng mảng `chart_paths` không cần đổi: node `Posts for publishing` chỉ nhận tối đa một bài mỗi lượt lịch 45 phút. Không có thay đổi schema/migration cho endpoint này. Chưa chạy build/test hay đăng thử trong lần triển khai source này.

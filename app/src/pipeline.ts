@@ -5,6 +5,7 @@ import { pool } from './db/client.js';
 import { scan } from './scanner/index.js';
 import { generatePost } from './agent.js';
 import { getSnapshot } from './memory/repository.js';
+import { loadTrendingPost } from './trending-post.js';
 type Run = { id: string; status: string; result: unknown };
 type PipelineMode = 'all' | 'trending';
 type ScanToken = Awaited<ReturnType<typeof scan>>['tokens'][number];
@@ -131,6 +132,9 @@ async function execute(id: string, lock: PoolClient, mode: PipelineMode): Promis
         const snapshot = await getSnapshot(token.symbol, token.snapshotId);
         const result = await generatePost(token.symbol, snapshot ? token.snapshotId : undefined);
         if (result.decision !== 'EXISTING_DRAFT') generated++;
+        if (mode === 'trending' && !await loadTrendingPost(result.post.id)) {
+          throw new Error('TRENDING_POST_NOT_READY');
+        }
         results.push({ symbol: token.symbol, decision: result.decision, postId: result.post.id });
         delivered = true;
       } catch (error) { results.push({ symbol: token.symbol, error: failureCode(error) }); }

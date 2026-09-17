@@ -57,10 +57,10 @@ export function chartPlanForWriter(plan: ChartPlan) {
   };
 }
 export const STYLE_PROMPTS: Record<EditorialStyle, string> = {
-  price: 'Góc nhìn vùng giá: mở bằng sự giằng co hoặc vùng hợp lưu thực có, dẫn từ khung bốn giờ về một giờ. Giọng tâm sự quan sát: “mình đang chú ý…”.',
-  volume: 'Góc nhìn giao dịch: mở từ volume nổi bật, đối chiếu phản ứng giá. Phân biệt giao dịch với dòng tiền ròng; không suy ra cá voi gom hàng từ volume.',
-  oi: 'Góc nhìn vị thế mở: dẫn từ biến động OI rồi đối chiếu giá và funding. OI tăng là hợp đồng mở tăng, không tự chứng minh tiền mới mua hay squeeze.',
-  positioning: 'Góc nhìn đám đông: dẫn từ tỷ lệ tài khoản long/short, đối chiếu giá và OI. Đây là tỷ lệ tài khoản, không phải khối lượng vị thế; không đảm bảo đảo chiều.',
+  price: 'Góc nhìn vùng giá: tập trung vùng hỗ trợ/kháng cự hoặc xu hướng thực có, đối chiếu các khung theo chartPlan. Không giả định đang giằng co khi dữ liệu chưa thể hiện. Cách mở và kết do format quyết định.',
+  volume: 'Góc nhìn giao dịch: tập trung volume và phản ứng giá. Phân biệt giao dịch với dòng tiền ròng; không suy ra cá voi gom hàng từ volume. Cách mở và kết do format quyết định.',
+  oi: 'Góc nhìn vị thế mở: tập trung biến động OI, đối chiếu giá và funding. OI tăng là hợp đồng mở tăng, không tự chứng minh tiền mới mua hay squeeze. Cách mở và kết do format quyết định.',
+  positioning: 'Góc nhìn đám đông: tập trung tỷ lệ tài khoản long/short, đối chiếu giá và OI. Đây là tỷ lệ tài khoản, không phải khối lượng vị thế; không đảm bảo đảo chiều. Cách mở và kết do format quyết định.',
 };
 export function inlineFacts(context: AgentContext): Record<string, string> {
   const m = context.market, d = m.derivatives;

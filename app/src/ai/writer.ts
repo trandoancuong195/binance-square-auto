@@ -5,6 +5,7 @@ import { draftSchema, type Decision, type DraftOutput } from './types.js';
 import { writerPrompt, type WriterPromptType } from './prompts.js';
 import { POST_MIN_CHARACTERS, POST_TARGET_CHARACTERS, POST_MAX_CHARACTERS } from './limits.js';
 import { invalidated } from '../series/decision-engine.js';
+import { assembleFormat, WRITING_FORMAT_IDS, WRITING_FORMATS, type WritingFormatId } from './writing-formats.js';
 import type { AgentContext } from '../types.js';
 
 export const numberText = (n: number) => new Intl.NumberFormat('en-US', { maximumSignificantDigits: 7, useGrouping: false }).format(n);
@@ -30,7 +31,25 @@ function resolveOutput(output: DraftOutput, facts: Record<string, string>): Draf
   return { post, series: { ...output.series, title: fillFacts(output.series.title, facts), newThesis: fillFacts(output.series.newThesis, facts), nextWatch: output.series.nextWatch.map(text => fillFacts(text, facts)) } };
 }
 export function assemble(output: DraftOutput, facts: string): string {
+  if (output.post.format) return assembleFormat(output.post, output.post.format);
   return assemblePost(output.post, facts);
+}
+
+function selectWritingFormat(context: AgentContext, display: PostPresentation): WritingFormatId {
+  const showsBothFrames = display.chartPlan.dashboard === 'timeframes'
+    || (display.chartPlan.technicalTimeframes.includes('1h') && display.chartPlan.technicalTimeframes.includes('4h'));
+  const eligible = WRITING_FORMAT_IDS.filter(format => format !== 'timeframe_lens'
+    || (showsBothFrames && (display.style === 'price' || display.style === 'volume')));
+  const recentFormats = context.recentPosts.filter(post => post.metadata.writerMode !== 'data_only')
+    .slice(0, 3).flatMap(post => {
+      const parsed = draftSchema.safeParse(post.metadata.output);
+      return parsed.success && parsed.data.post.format ? [parsed.data.post.format] : [];
+    });
+  const fresh = eligible.filter(format => !recentFormats.includes(format));
+  const choices = fresh.length ? fresh : eligible;
+  const seed = Array.from(`${context.market.symbol}:${context.market.asOf}:writing-format`)
+    .reduce((value, character) => Math.imul(value ^ character.charCodeAt(0), 16777619) >>> 0, 2166136261);
+  return choices[seed % choices.length]!;
 }
 const transitions: Record<string, string[]> = {
   WATCHING: ['WATCHING', 'BREAKOUT_ATTEMPT', 'BREAKOUT_CONFIRMED', 'INVALIDATED', 'CLOSED'],
@@ -41,10 +60,10 @@ const transitions: Record<string, string[]> = {
 };
 export async function writeDraft(context: AgentContext, decision: Decision, display: PostPresentation = presentation(context)) {
   const values = inlineFacts(context);
-  const facts = `${context.market.symbol} · ${context.market.asOf.slice(0, 16).replace('T', ' ')} UTC · Binance`;
-  const render = (output: DraftOutput) => assemblePost(resolveOutput(output, values).post, facts, display.layout);
+  const format = selectWritingFormat(context, display);
+  const render = (output: DraftOutput) => assembleFormat(resolveOutput(output, values).post, format);
   // Count fixed facts, labels and separators with the same assembler used to save the post.
-  const fixedCharacters = Array.from(assemblePost({ title: '', hook: '', interpretation: '', bullishScenario: '', bearishScenario: '', risk: '', tags: [] }, facts)).length;
+  const fixedCharacters = Array.from(assembleFormat({ title: '', hook: '', interpretation: '', bullishScenario: '', bearishScenario: '', risk: '', tags: [] }, format)).length;
   const postTextBudget = {
     min: POST_MIN_CHARACTERS - fixedCharacters,
     target: POST_TARGET_CHARACTERS - fixedCharacters,
@@ -56,7 +75,7 @@ export async function writeDraft(context: AgentContext, decision: Decision, disp
   const schema = draftSchema.superRefine((output, ctx) => {
     const content = render(output), length = Array.from(content).length;
     const textFields: [string[], string][] = [
-      ...Object.entries(output.post).filter((entry): entry is [string, string] => typeof entry[1] === 'string').map(([key, value]): [string[], string] => [['post', key], value]),
+      ...Object.entries(output.post).filter((entry): entry is [string, string] => entry[0] !== 'format' && typeof entry[1] === 'string').map(([key, value]): [string[], string] => [['post', key], value]),
       [['series', 'title'], output.series.title], [['series', 'newThesis'], output.series.newThesis],
       ...output.series.nextWatch.map((text, i): [string[], string] => [['series', 'nextWatch', String(i)], text]),
     ];
@@ -127,8 +146,17 @@ export async function writeDraft(context: AgentContext, decision: Decision, disp
     allowedStages: forcedInvalidation ? ['INVALIDATED'] : previous ? transitions[previous.stage] ?? [] : ['WATCHING', 'BREAKOUT_ATTEMPT', 'BREAKOUT_CONFIRMED'],
     allowedLevels: [...new Set(allowedLevels)], postTextBudget, inlineFacts: values, editorialStyle: display.style,
     chartPlan: chartPlanForWriter(display.chartPlan),
+    writingFormat: { id: format, name: WRITING_FORMATS[format].name },
+    recentOpenings: context.recentPosts.filter(post => post.metadata.writerMode !== 'data_only').slice(0, 3).map(post => {
+      const stored = draftSchema.safeParse(post.metadata.output);
+      const characters = Array.from(post.content);
+      return { title: post.title, opening: characters.slice(0, 260).join(''), ending: characters.slice(-200).join(''), format: stored.success ? stored.data.post.format ?? null : null };
+    }),
   };
   const chartKey = [display.chartPlan.dashboard, ...display.chartPlan.technicalTimeframes].join(':');
-  const { data: output, model } = await completeWithModel(schema, writerPrompt(promptType, display.style), input, `${promptType}:${display.style}:${chartKey}`);
-  return { output: resolveOutput(output, values), content: render(output), editorialStyle: display.style, aiModel: model };
+  const { data: output, model } = await completeWithModel(schema, writerPrompt(promptType, display.style, format), input, `${promptType}:${display.style}:${chartKey}:${format}`);
+  const resolved = resolveOutput(output, values);
+  // Code owns the format; persist it inside the output already saved in post metadata.
+  resolved.post.format = format;
+  return { output: resolved, content: render(output), editorialStyle: display.style, aiModel: model };
 }

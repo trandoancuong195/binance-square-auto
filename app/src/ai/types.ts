@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WRITING_FORMAT_IDS } from './writing-formats.js';
 export const actionSchema = z.enum(['NEW_POST', 'CONTINUE_SERIES', 'UPDATE_SERIES', 'SKIP']);
 export const decisionSchema = z.object({
   decision: actionSchema,
@@ -20,6 +21,7 @@ export const draftSchema = z.object({
     nextWatch: z.array(z.string().min(5).max(200)).min(1).max(3),
   }).strict(),
   post: z.object({
+    format: z.enum(WRITING_FORMAT_IDS).optional(),
     title: z.string().min(10).max(100),
     hook: prose,
     interpretation: prose,
